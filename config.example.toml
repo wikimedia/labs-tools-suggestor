@@ -1,0 +1,5 @@
+address = ":4000"
+redis = ":6379"
+consumer_key = ""
+consumer_secret = ""
+wiki_url = ""
