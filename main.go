@@ -101,15 +101,19 @@ type Post struct {
 }
 
 func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Body == nil {
+		http.Error(w, "No body posted.", http.StatusBadRequest)
+		return
+	}
 	var p Post
-	err := decoder.Decode(&p)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		str := fmt.Sprintf("Cannot decode posted json: %s", err.Error())
 		http.Error(w, str, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
+	log.Println(p.Wikitext)
 	w.WriteHeader(http.StatusOK)
 }
 

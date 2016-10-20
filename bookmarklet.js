@@ -9,6 +9,7 @@ javascript:(function() {
         $.ajax({
           type: "post",
           url: "http://localhost:4000/post",
+          dataType: "json",
           data: JSON.stringify({
             host: window.location.host,
             pageName: mw.config.get("wgPageName"),
@@ -16,7 +17,6 @@ javascript:(function() {
             curRevisionId: mw.config.get("wgCurRevisionId"),
             wikitext: wikitext,
           }),
-          contentType: "application/json",
         })
       });
     };
