@@ -12,9 +12,9 @@ javascript:(function() {
                     url: "http://localhost:4000/post",
                     dataType: "json",
                     data: JSON.stringify({
-                        host: window.location.host,
-                        page: this.pageName,
-                        oldid: this.revid,
+                        host: mw.config.get("wgServerName"),
+                        page: mw.config.get("wgPageName"),
+                        revId: mw.config.get("wgRevisionId"),
                         articleId: mw.config.get("wgArticleId"),
                         wikitext: wikitext,
                     }),
