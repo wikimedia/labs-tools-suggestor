@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/garyburd/redigo/redis"
 	"github.com/mrjones/oauth"
-	"strconv"
 )
 
 type Config struct {
