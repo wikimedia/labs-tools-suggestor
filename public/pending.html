@@ -1,10 +1,17 @@
 {{ template "layout.html" . }}
 {{ define "body" }}
 <h2>Pending edits</h2>
+<table>
+    <tr>
+        <th>Article Id</td>
+        <th>Wikitext</td>
+    </tr>
 {{ range $i, $v := .Pending }}
-    <h3>{{ $v.ArticleId }}</h3>
-    <pre>
-        {{ $v.Wikitext }}
-    </pre>
+    <tr>
+        <td>{{ $v.ArticleId }}</td>
+        <td><a href="/approve?articleid={{ $v.ArticleId }}">Approve?</a></td>
+        <td>{{ $v.Wikitext }}</td>
+    </tr>
 {{ end }}
+</table>
 {{ end }}
