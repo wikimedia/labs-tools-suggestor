@@ -39,10 +39,17 @@ func NewContext(conf *Config, consumer *oauth.Consumer, pool *redis.Pool) Contex
 }
 
 func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
-	err := c.templates["root"].ExecuteTemplate(w, "root.html", struct {
-		Title string
+	loggedIn := false
+	_, err := r.Cookie("oauthtoken")
+	if err == nil {
+		loggedIn = true
+	}
+	err = c.templates["root"].ExecuteTemplate(w, "root.html", struct {
+		Title    string
+		LoggedIn bool
 	}{
 		"Root",
+		loggedIn,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -88,6 +95,10 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	exp := time.Now().Add(30 * 24 * time.Hour)
+	val := fmt.Sprintf("%s:%s", accessToken.Token, accessToken.Secret)
+	cookie = &http.Cookie{Name: "oauthtoken", Value: val, Expires: exp}
+	http.SetCookie(w, cookie)
 	err = c.templates["callback"].ExecuteTemplate(w, "callback.html", struct {
 		Title       string
 		AccessToken string
