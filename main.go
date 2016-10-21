@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/garyburd/redigo/redis"
 	"github.com/mrjones/oauth"
+	"strconv"
 )
 
 type Config struct {
@@ -97,7 +98,9 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 }
 
 type Post struct {
-	Wikitext string `json:"wikitext"`
+	Wikitext  string `json:"wikitext"`
+	ArticleId int    `json:"articleId"`
+	Timestamp int
 }
 
 func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +116,20 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	log.Println(p.Wikitext)
+	conn := c.pool.Get()
+	defer conn.Close()
+	key := "page:" + strconv.Itoa(p.ArticleId)
+	conn.Send("MULTI")
+	conn.Send("HMSET", key,
+		"wikitext", p.Wikitext,
+		"timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10),
+		"id", p.ArticleId,
+	)
+	conn.Send("LPUSH", "pages", p.ArticleId)
+	_, err := conn.Do("EXEC")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 	mar, err := json.Marshal(struct {
 		Status string
 	}{
@@ -125,6 +141,46 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(mar)
+}
+
+func (c *Context) Pending(w http.ResponseWriter, r *http.Request) {
+	err := c.templates["pending"].ExecuteTemplate(w, "pending.html", struct {
+		Title   string
+		Pending []Post
+	}{
+		"Pending edits",
+		c.ListPendingEdits(),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+}
+
+func (c *Context) ListPendingEdits() []Post {
+	conn := c.pool.Get()
+	defer conn.Close()
+	values, err := redis.Values(conn.Do("SORT", "pages",
+		"BY", "page:*->timestamp",
+		"GET", "page:*->wikitext",
+		"GET", "page:*->timestamp",
+		"GET", "page:*->id",
+	))
+	if err != nil {
+		panic(err)
+	}
+
+	var pending []Post
+	for len(values) > 0 {
+		var wikitext string
+		var timestamp int
+		var id int
+		values, err = redis.Scan(values, &wikitext, &timestamp, &id)
+		pending = append(pending, Post{wikitext, id, timestamp})
+	}
+
+	return pending
 }
 
 func (c *Context) CompileTemplates(templates []string) {
@@ -176,12 +232,13 @@ func main() {
 	}
 
 	context := NewContext(&conf, consumer, &pool)
-	context.CompileTemplates([]string{"root", "callback"})
+	context.CompileTemplates([]string{"root", "callback", "pending"})
 
 	http.HandleFunc("/", context.Root)
 	http.HandleFunc("/initiate", context.Initiate)
 	http.HandleFunc("/callback", context.Callback)
 	http.HandleFunc("/post", context.Post)
+	http.HandleFunc("/pending", context.Pending)
 
 	address := conf.Address
 	// Prefer, for tools labs
