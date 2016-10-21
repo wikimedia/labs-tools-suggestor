@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -30,13 +31,11 @@ type Context struct {
 	consumer  *oauth.Consumer
 	pool      *redis.Pool
 	templates map[string]*template.Template
-	tokens    map[string]*oauth.RequestToken
 }
 
 func NewContext(conf *Config, consumer *oauth.Consumer, pool *redis.Pool) Context {
 	templates := make(map[string]*template.Template)
-	tokens := make(map[string]*oauth.RequestToken)
-	return Context{conf, consumer, pool, templates, tokens}
+	return Context{conf, consumer, pool, templates}
 }
 
 func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +60,10 @@ func (c *Context) Initiate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	c.tokens[requestToken.Token] = requestToken
+	exp := time.Now().Add(time.Hour)
+	val := fmt.Sprintf("%s:%s", requestToken.Token, requestToken.Secret)
+	cookie := http.Cookie{Name: "oauthreqtoken", Value: val, Expires: exp}
+	http.SetCookie(w, &cookie)
 	http.Redirect(w, r, url, 303)
 }
 
@@ -70,15 +72,17 @@ var callbackParams = map[string]string{
 }
 
 func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	token := query.Get("oauth_token")
-	var ok bool
-	var requestToken *oauth.RequestToken
-	if requestToken, ok = c.tokens[token]; !ok {
+	cookie, err := r.Cookie("oauthreqtoken")
+	if err != nil {
 		http.Error(w, "Token not found.", http.StatusBadRequest)
 		return
 	}
-	verificationCode := query.Get("oauth_verifier")
+	vals := strings.SplitN(cookie.Value, ":", 2)
+	requestToken := &oauth.RequestToken{
+		Token:  vals[0],
+		Secret: vals[1],
+	}
+	verificationCode := r.URL.Query().Get("oauth_verifier")
 	accessToken, err := c.consumer.AuthorizeTokenWithParams(requestToken, verificationCode, callbackParams)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
