@@ -144,6 +144,7 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	_, err := conn.Do("EXEC")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	mar, err := json.Marshal(struct {
 		Status string
@@ -159,23 +160,28 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Context) Pending(w http.ResponseWriter, r *http.Request) {
-	err := c.templates["pending"].ExecuteTemplate(w, "pending.html", struct {
+	list, err := c.ListPendingEdits()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = c.templates["pending"].ExecuteTemplate(w, "pending.html", struct {
 		Title   string
 		Pending []Post
 	}{
 		"Pending edits",
-		c.ListPendingEdits(),
+		list,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 }
 
-func (c *Context) ListPendingEdits() []Post {
+func (c *Context) ListPendingEdits() ([]Post, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
+
 	values, err := redis.Values(conn.Do("SORT", "pages",
 		"BY", "page:*->timestamp",
 		"GET", "page:*->wikitext",
@@ -183,7 +189,7 @@ func (c *Context) ListPendingEdits() []Post {
 		"GET", "page:*->id",
 	))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	var pending []Post
@@ -194,8 +200,7 @@ func (c *Context) ListPendingEdits() []Post {
 		values, err = redis.Scan(values, &wikitext, &timestamp, &id)
 		pending = append(pending, Post{wikitext, id, timestamp})
 	}
-
-	return pending
+	return pending, nil
 }
 
 func (c *Context) CompileTemplates(templates []string) {
