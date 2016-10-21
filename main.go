@@ -114,7 +114,17 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 	log.Println(p.Wikitext)
-	w.WriteHeader(http.StatusOK)
+	mar, err := json.Marshal(struct {
+		Status string
+	}{
+		"success",
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(mar)
 }
 
 func (c *Context) CompileTemplates(templates []string) {
