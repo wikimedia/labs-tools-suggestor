@@ -57,6 +57,22 @@ func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func setToken(w http.ResponseWriter, name, token, secret string, duration time.Duration) {
+	exp := time.Now().Add(duration)
+	val := fmt.Sprintf("%s:%s", token, secret)
+	cookie := &http.Cookie{Name: name, Value: val, Expires: exp}
+	http.SetCookie(w, cookie)
+}
+
+func getToken(r *http.Request, name string) (string, string, error) {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return "", "", err
+	}
+	vals := strings.SplitN(cookie.Value, ":", 2)
+	return vals[0], vals[1], nil
+}
+
 var initiateParams = map[string]string{
 	"title": "Special:OAuth/initiate",
 }
@@ -67,10 +83,7 @@ func (c *Context) Initiate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	exp := time.Now().Add(time.Hour)
-	val := fmt.Sprintf("%s:%s", requestToken.Token, requestToken.Secret)
-	cookie := http.Cookie{Name: "oauthreqtoken", Value: val, Expires: exp}
-	http.SetCookie(w, &cookie)
+	setToken(w, "oauthreqtoken", requestToken.Token, requestToken.Secret, time.Hour)
 	http.Redirect(w, r, url, 303)
 }
 
@@ -79,37 +92,20 @@ var callbackParams = map[string]string{
 }
 
 func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("oauthreqtoken")
+	token, secret, err := getToken(r, "oauthreqtoken")
 	if err != nil {
 		http.Error(w, "Token not found.", http.StatusBadRequest)
 		return
 	}
-	vals := strings.SplitN(cookie.Value, ":", 2)
-	requestToken := &oauth.RequestToken{
-		Token:  vals[0],
-		Secret: vals[1],
-	}
+	requestToken := &oauth.RequestToken{Token: token, Secret: secret}
 	verificationCode := r.URL.Query().Get("oauth_verifier")
 	accessToken, err := c.consumer.AuthorizeTokenWithParams(requestToken, verificationCode, callbackParams)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	exp := time.Now().Add(30 * 24 * time.Hour)
-	val := fmt.Sprintf("%s:%s", accessToken.Token, accessToken.Secret)
-	cookie = &http.Cookie{Name: "oauthtoken", Value: val, Expires: exp}
-	http.SetCookie(w, cookie)
-	err = c.templates["callback"].ExecuteTemplate(w, "callback.html", struct {
-		Title       string
-		AccessToken string
-	}{
-		"Callback",
-		accessToken.Token,
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	setToken(w, "oauthtoken", accessToken.Token, accessToken.Secret, 30*24*time.Hour)
+	http.Redirect(w, r, "/", 303)
 }
 
 type Post struct {
