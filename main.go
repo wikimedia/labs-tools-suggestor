@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -229,7 +230,8 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	q := req.URL.Query()
+
+	q := url.Values{}
 	q.Add("action", "query")
 	q.Add("meta", "tokens")
 	q.Add("type", "csrf")
@@ -254,7 +256,33 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	log.Println(p.Query.Tokens.CSRFToken)
+	csrf := p.Query.Tokens.CSRFToken
+	wikitext := "haha"
+
+	query := r.URL.Query()
+	pageid := query.Get("articleid")
+
+	f := url.Values{}
+	f.Add("action", "edit")
+	f.Add("pageid", pageid)
+	f.Add("summary", "TODO")
+	f.Add("text", wikitext)
+	f.Add("token", csrf)
+	f.Add("format", "json")
+
+	req, err = http.NewRequest("POST", c.conf.WikiUrl+"/api.php", strings.NewReader(f.Encode()))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
