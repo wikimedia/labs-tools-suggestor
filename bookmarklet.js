@@ -17,6 +17,7 @@ javascript:(function() {
                         revId: mw.config.get("wgRevisionId"),
                         articleId: mw.config.get("wgArticleId"),
                         wikitext: wikitext,
+                        summary: options.summary,
                     }),
                     success: function() {
                         target.saveDialog.reset();

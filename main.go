@@ -111,6 +111,7 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 
 type Post struct {
 	Wikitext  string `json:"wikitext"`
+	Summary   string `json:"summary"`
 	ArticleId int    `json:"articleId"`
 	Timestamp int
 }
@@ -134,8 +135,9 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	conn.Send("MULTI")
 	conn.Send("HMSET", key,
 		"wikitext", p.Wikitext,
-		"timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10),
+		"summary", p.Summary,
 		"id", p.ArticleId,
+		"timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10),
 	)
 	conn.Send("LPUSH", "pages", p.ArticleId)
 	_, err := conn.Do("EXEC")
@@ -182,22 +184,17 @@ func (c *Context) ListPendingEdits() ([]Post, error) {
 	values, err := redis.Values(conn.Do("SORT", "pages",
 		"BY", "page:*->timestamp",
 		"GET", "page:*->wikitext",
-		"GET", "page:*->timestamp",
+		"GET", "page:*->summary",
 		"GET", "page:*->id",
+		"GET", "page:*->timestamp",
 	))
 	if err != nil {
 		return nil, err
 	}
 
 	var pending []Post
-	for len(values) > 0 {
-		var wikitext string
-		var timestamp int
-		var id int
-		values, err = redis.Scan(values, &wikitext, &timestamp, &id)
-		pending = append(pending, Post{wikitext, id, timestamp})
-	}
-	return pending, nil
+	err = redis.ScanSlice(values, &pending)
+	return pending, err
 }
 
 type RespTokens struct {
