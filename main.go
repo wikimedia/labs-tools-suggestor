@@ -249,10 +249,20 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(values) == 0 {
+		http.Error(w, "Edit id does not exist.", http.StatusBadRequest)
+		return
+	}
+
 	var post Post
 	err = redis.ScanStruct(values, &post)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if post.Approved {
+		http.Error(w, "Edit already approved.", http.StatusBadRequest)
 		return
 	}
 
@@ -317,7 +327,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	http.Redirect(w, r, "/pending", 303)
 }
 
 func (c *Context) CompileTemplates(templates []string) {
