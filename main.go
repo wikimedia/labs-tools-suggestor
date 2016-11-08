@@ -110,10 +110,11 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 }
 
 type Post struct {
-	Wikitext  string `json:"wikitext"`
-	Summary   string `json:"summary"`
-	ArticleId int    `json:"articleId"`
-	Timestamp int
+	Wikitext string `json:"wikitext" redis:"wikitext"`
+	Summary  string `json:"summary" redis:"summary"`
+	Revid    int    `json:"revid" redis:"revid"`
+	Pageid   int    `json:"pageid" redis:"pageid"`
+	Approved bool   `redis:"approved"`
 }
 
 func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +132,24 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	conn := c.pool.Get()
 	defer conn.Close()
-	key := "page:" + strconv.Itoa(p.ArticleId)
+	uid, err := redis.Int(conn.Do("INCR", "uids"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	strUid := strconv.Itoa(uid)
+	key := "edit:" + strUid
 	conn.Send("MULTI")
-	conn.Send("HMSET", key,
+	conn.Send(
+		"HMSET", key,
 		"wikitext", p.Wikitext,
 		"summary", p.Summary,
-		"id", p.ArticleId,
-		"timestamp", strconv.FormatInt(time.Now().UTC().Unix(), 10),
+		"revid", p.Revid,
+		"pageid", p.Pageid,
+		"approved", "0",
 	)
-	conn.Send("LPUSH", "pages", p.ArticleId)
-	_, err := conn.Do("EXEC")
+	conn.Send("LPUSH", "edits", strUid)
+	_, err = conn.Do("EXEC")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -159,17 +168,17 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Context) Pending(w http.ResponseWriter, r *http.Request) {
-	list, err := c.ListPendingEdits()
+	pendings, err := c.ListPendingEdits()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	err = c.templates["pending"].ExecuteTemplate(w, "pending.html", struct {
-		Title   string
-		Pending []Post
+		Title    string
+		Pendings []Pending
 	}{
 		"Pending edits",
-		list,
+		pendings,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -177,24 +186,30 @@ func (c *Context) Pending(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *Context) ListPendingEdits() ([]Post, error) {
+type Pending struct {
+	Uid      int
+	Pageid   int
+	Approved bool
+	Summary  string
+}
+
+func (c *Context) ListPendingEdits() ([]Pending, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
-
-	values, err := redis.Values(conn.Do("SORT", "pages",
-		"BY", "page:*->timestamp",
-		"GET", "page:*->wikitext",
-		"GET", "page:*->summary",
-		"GET", "page:*->id",
-		"GET", "page:*->timestamp",
+	values, err := redis.Values(conn.Do(
+		"SORT", "edits",
+		"DESC",
+		"GET", "#",
+		"GET", "edit:*->pageid",
+		"GET", "edit:*->approved",
+		"GET", "edit:*->summary",
 	))
 	if err != nil {
 		return nil, err
 	}
-
-	var pending []Post
-	err = redis.ScanSlice(values, &pending)
-	return pending, err
+	var pendings []Pending
+	err = redis.ScanSlice(values, &pendings)
+	return pendings, err
 }
 
 type RespTokens struct {
@@ -222,6 +237,25 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	query := r.URL.Query()
+	strUid := query.Get("uid")
+
+	values, err := redis.Values(conn.Do("HGETALL", "edit:"+strUid))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var post Post
+	err = redis.ScanStruct(values, &post)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	req, err := http.NewRequest("GET", c.conf.WikiUrl+"/api.php", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -240,7 +274,6 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	if resp.Body == nil {
 		http.Error(w, "No body got.", http.StatusBadRequest)
 		return
@@ -254,18 +287,13 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	csrf := p.Query.Tokens.CSRFToken
-	wikitext := "haha"
-
-	query := r.URL.Query()
-	pageid := query.Get("articleid")
 
 	f := url.Values{}
 	f.Add("action", "edit")
-	f.Add("pageid", pageid)
-	f.Add("summary", "TODO")
-	f.Add("text", wikitext)
+	f.Add("pageid", strconv.Itoa(post.Pageid))
+	f.Add("summary", post.Summary)
+	f.Add("text", post.Wikitext)
 	f.Add("token", csrf)
-	f.Add("format", "json")
 
 	req, err = http.NewRequest("POST", c.conf.WikiUrl+"/api.php", strings.NewReader(f.Encode()))
 	if err != nil {

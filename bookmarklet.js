@@ -14,8 +14,8 @@ javascript:(function() {
                     data: JSON.stringify({
                         host: mw.config.get("wgServerName"),
                         page: mw.config.get("wgPageName"),
-                        revId: mw.config.get("wgRevisionId"),
-                        articleId: mw.config.get("wgArticleId"),
+                        revid: mw.config.get("wgRevisionId"),
+                        pageid: mw.config.get("wgArticleId"),
                         wikitext: wikitext,
                         summary: options.summary,
                     }),

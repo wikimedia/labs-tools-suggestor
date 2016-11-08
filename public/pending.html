@@ -3,17 +3,21 @@
 <h2>Pending edits</h2>
 <table>
     <tr>
-        <th>Article Id</th>
+        <th>Page Id</th>
         <th>Approve?</th>
         <th>Summary</th>
-        <th>Wikitext</th>
     </tr>
-    {{ range $_, $v := .Pending }}
+    {{ range $_, $v := .Pendings }}
     <tr>
-        <td>{{ $v.ArticleId }}</td>
-        <td><a href="/approve?articleid={{ $v.ArticleId }}">Approve?</a></td>
+        <td>{{ $v.Pageid }}</td>
+        <td>
+            {{ if $v.Approved }}
+            Approved
+            {{ else }}
+            <a href="/approve?uid={{ $v.Uid }}">Approve?</a>
+            {{ end }}
+        </td>
         <td>{{ $v.Summary }}</td>
-        <td>{{ $v.Wikitext }}</td>
     </tr>
     {{ end }}
 </table>
