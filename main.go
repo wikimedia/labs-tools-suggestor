@@ -241,9 +241,9 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	query := r.URL.Query()
-	strUid := query.Get("uid")
+	key := "edit:" + query.Get("uid")
 
-	values, err := redis.Values(conn.Do("HGETALL", "edit:"+strUid))
+	values, err := redis.Values(conn.Do("HGETALL", key))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -294,6 +294,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	f.Add("summary", post.Summary)
 	f.Add("text", post.Wikitext)
 	f.Add("token", csrf)
+	f.Add("format", "json")
 
 	req, err = http.NewRequest("POST", c.conf.WikiUrl+"/api.php", strings.NewReader(f.Encode()))
 	if err != nil {
@@ -303,6 +304,14 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err = client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// FIXME: Parse response for better assurance edit was accepted.
+
+	_, err = conn.Do("HSET", key, "approved", "1")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
