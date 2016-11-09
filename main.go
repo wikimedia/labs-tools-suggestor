@@ -53,7 +53,7 @@ func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
 		Title    string
 		LoggedIn bool
 	}{
-		"Root",
+		"Suggestor",
 		loggedIn,
 	})
 	if err != nil {
@@ -407,7 +407,7 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Context) CompileTemplates(templates []string) {
-	base := "public/"
+	base := "templates/"
 	layout := template.Must(template.ParseFiles(path.Join(base, "layout.html")))
 	for _, t := range templates {
 		clone, err := layout.Clone()
@@ -455,7 +455,9 @@ func main() {
 	}
 
 	context := NewContext(&conf, consumer, &pool)
-	context.CompileTemplates([]string{"root", "callback", "pending", "diff"})
+	context.CompileTemplates([]string{"root", "pending", "diff"})
+
+	http.Handle("/public/", http.StripPrefix("/public/", http.FileServer(http.Dir("public"))))
 
 	http.HandleFunc("/", context.Root)
 	http.HandleFunc("/initiate", context.Initiate)

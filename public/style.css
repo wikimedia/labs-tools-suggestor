@@ -1,0 +1,27 @@
+body {
+    margin: 1em;
+}
+
+.container {
+    max-width: 750px;
+}
+
+.row {
+    margin: 2em 0;
+}
+
+.diff-lineno {
+    font-weight: bold;
+}
+
+.diff-addedline {
+    background-color: Honeydew;
+}
+
+.diff-deletedline {
+    background-color: MistyRose;
+}
+
+.diffchange {
+    text-decoration: none;
+}

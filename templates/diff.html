@@ -1,4 +1,6 @@
 {{ template "layout.html" . }}
 {{ define "body" }}
-Access token: {{ .AccessToken }}
+<table class="table">
+{{ .Diff }}
+</table>
 {{ end }}
