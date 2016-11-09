@@ -1,8 +1,13 @@
 {{ template "layout.html" . }}
 {{ define "body" }}
-    {{ if .LoggedIn }}
-        Logged in ...
-    {{ else }}
-        <a href="./initiate">Login</a><br />
-    {{ end }}
+<ul>
+    <li>
+        {{ if .LoggedIn }}
+            Logged in ...
+        {{ else }}
+            <a href="./initiate">Login</a><br />
+        {{ end }}
+    </li>
+    <li><a href="./pending">Pending edits</a></li>
+</ul>
 {{ end }}

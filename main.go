@@ -40,6 +40,10 @@ func NewContext(conf *Config, consumer *oauth.Consumer, pool *redis.Pool) Contex
 }
 
 func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
+	if len(r.URL.Path) > 1 {
+		http.NotFound(w, r)
+		return
+	}
 	loggedIn := false
 	_, err := r.Cookie("oauthtoken")
 	if err == nil {
@@ -239,21 +243,17 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 
 	conn := c.pool.Get()
 	defer conn.Close()
-
 	query := r.URL.Query()
 	key := "edit:" + query.Get("uid")
-
 	values, err := redis.Values(conn.Do("HGETALL", key))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	if len(values) == 0 {
-		http.Error(w, "Edit id does not exist.", http.StatusBadRequest)
+		http.NotFound(w, r)
 		return
 	}
-
 	var post Post
 	err = redis.ScanStruct(values, &post)
 	if err != nil {
@@ -330,6 +330,82 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/pending", 303)
 }
 
+type Resp2Revision struct {
+	Diff map[string]string
+}
+
+type Resp2Page struct {
+	Title     string
+	Revisions []Resp2Revision
+}
+
+type Resp2Pages struct {
+	Pages map[string]Resp2Page
+}
+
+type Resp2 struct {
+	Query Resp2Pages
+}
+
+func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
+	// FIXME: A lot of this is shared w/ Approve.  Needs refactoring.
+	conn := c.pool.Get()
+	defer conn.Close()
+	query := r.URL.Query()
+	key := "edit:" + query.Get("uid")
+	values, err := redis.Values(conn.Do("HGETALL", key))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(values) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	var post Post
+	err = redis.ScanStruct(values, &post)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	f := url.Values{}
+	f.Add("action", "query")
+	f.Add("prop", "revisions")
+	f.Add("revids", strconv.Itoa(post.Revid))
+	f.Add("rvdifftotext", post.Wikitext)
+	f.Add("format", "json")
+	resp, err := http.PostForm(c.conf.WikiUrl+"/api.php", f)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var p Resp2
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		str := fmt.Sprintf("Cannot decode got json: %s", err.Error())
+		http.Error(w, str, http.StatusBadRequest)
+		return
+	}
+	defer resp.Body.Close()
+
+	// FIXME: Test for `ok`
+	diff := p.Query.Pages[strconv.Itoa(post.Pageid)]
+
+	err = c.templates["diff"].ExecuteTemplate(w, "diff.html", struct {
+		Title string
+		Diff  template.HTML
+	}{
+		"Diff for: " + diff.Title,
+		// FIXME: Test for `ok`
+		template.HTML(diff.Revisions[0].Diff["*"]),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 func (c *Context) CompileTemplates(templates []string) {
 	base := "public/"
 	layout := template.Must(template.ParseFiles(path.Join(base, "layout.html")))
@@ -379,7 +455,7 @@ func main() {
 	}
 
 	context := NewContext(&conf, consumer, &pool)
-	context.CompileTemplates([]string{"root", "callback", "pending"})
+	context.CompileTemplates([]string{"root", "callback", "pending", "diff"})
 
 	http.HandleFunc("/", context.Root)
 	http.HandleFunc("/initiate", context.Initiate)
@@ -387,6 +463,7 @@ func main() {
 	http.HandleFunc("/post", context.Post)
 	http.HandleFunc("/pending", context.Pending)
 	http.HandleFunc("/approve", context.Approve)
+	http.HandleFunc("/diff", context.Diff)
 
 	address := conf.Address
 	// Prefer, for tools labs

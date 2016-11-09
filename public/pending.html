@@ -6,6 +6,7 @@
         <th>Page Id</th>
         <th>Approve?</th>
         <th>Summary</th>
+        <th>View Diff</th>
     </tr>
     {{ range $_, $v := .Pendings }}
     <tr>
@@ -14,10 +15,11 @@
             {{ if $v.Approved }}
             Approved
             {{ else }}
-            <a href="/approve?uid={{ $v.Uid }}">Approve?</a>
+            <a href="./approve?uid={{ $v.Uid }}">Approve?</a>
             {{ end }}
         </td>
         <td>{{ $v.Summary }}</td>
+        <td><a href="./diff?uid={{ $v.Uid }}">View Diff</a></td>
     </tr>
     {{ end }}
 </table>
