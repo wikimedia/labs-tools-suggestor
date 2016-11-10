@@ -299,7 +299,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", c.conf.ConsumerUrl+"/api.php", nil)
+	req, err := http.NewRequest("GET", post.Api, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -339,7 +339,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	f.Add("token", csrf)
 	f.Add("format", "json")
 
-	req, err = http.NewRequest("POST", c.conf.ConsumerUrl+"/api.php", strings.NewReader(f.Encode()))
+	req, err = http.NewRequest("POST", post.Api, strings.NewReader(f.Encode()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -408,7 +408,7 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 	f.Add("revids", strconv.Itoa(post.Revid))
 	f.Add("rvdifftotext", post.Wikitext)
 	f.Add("format", "json")
-	resp, err := http.PostForm(c.conf.ConsumerUrl+"/api.php", f)
+	resp, err := http.PostForm(post.Api, f)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -476,9 +476,9 @@ func main() {
 	}
 
 	consumer := oauth.NewConsumer(conf.ConsumerKey, conf.ConsumerSecret, oauth.ServiceProvider{
-		RequestTokenUrl:   conf.ConsumerUrl + "/index.php/Special:OAuth/initiate",
-		AuthorizeTokenUrl: conf.ConsumerUrl + "/index.php/Special:OAuth/authorize",
-		AccessTokenUrl:    conf.ConsumerUrl + "/index.php/Special:OAuth/token",
+		RequestTokenUrl:   conf.ConsumerUrl + "Special:OAuth/initiate",
+		AuthorizeTokenUrl: conf.ConsumerUrl + "Special:OAuth/authorize",
+		AccessTokenUrl:    conf.ConsumerUrl + "Special:OAuth/token",
 	})
 	consumer.Debug(conf.Debug)
 
