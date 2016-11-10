@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -406,8 +408,7 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *Context) CompileTemplates(templates []string) {
-	base := "templates/"
+func (c *Context) CompileTemplates(base string, templates []string) {
 	layout := template.Must(template.ParseFiles(path.Join(base, "layout.html")))
 	for _, t := range templates {
 		clone, err := layout.Clone()
@@ -419,8 +420,11 @@ func (c *Context) CompileTemplates(templates []string) {
 }
 
 func main() {
+	configPath := flag.String("c", "./config.toml", "path to config file")
+	flag.Parse()
+
 	var conf Config
-	if _, err := toml.DecodeFile("config.toml", &conf); err != nil {
+	if _, err := toml.DecodeFile(*configPath, &conf); err != nil {
 		log.Fatal("Couldn't decode config file.")
 	}
 
@@ -455,9 +459,13 @@ func main() {
 	}
 
 	context := NewContext(&conf, consumer, &pool)
-	context.CompileTemplates([]string{"root", "pending", "diff"})
+	base := filepath.Dir(*configPath)
 
-	http.Handle("/public/", http.StripPrefix("/public/", http.FileServer(http.Dir("public"))))
+	templates := filepath.Join(base, "templates")
+	context.CompileTemplates(templates, []string{"root", "pending", "diff"})
+
+	public := http.Dir(filepath.Join(base, "public"))
+	http.Handle("/public/", http.StripPrefix("/public/", http.FileServer(public)))
 
 	http.HandleFunc("/", context.Root)
 	http.HandleFunc("/initiate", context.Initiate)
