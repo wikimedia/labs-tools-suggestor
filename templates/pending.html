@@ -2,14 +2,18 @@
 {{ define "body" }}
 <table class="table">
     <tr>
-        <th>Page Id</th>
-        <th>Approve?</th>
+        <th>Host</th>
+        <th>Page Name</th>
         <th>Summary</th>
         <th>View Diff</th>
+        <th>Approve?</th>
     </tr>
     {{ range $_, $v := .Pendings }}
     <tr>
-        <td>{{ $v.Pageid }}</td>
+        <td>{{ $v.Host }}</td>
+        <td>{{ $v.Pagename }}</td>
+        <td>{{ $v.Summary }}</td>
+        <td><a href="/suggestor/diff?uid={{ $v.Uid }}">View Diff</a></td>
         <td>
             {{ if $v.Approved }}
             Approved
@@ -17,8 +21,6 @@
             <a href="/suggestor/approve?uid={{ $v.Uid }}">Approve?</a>
             {{ end }}
         </td>
-        <td>{{ $v.Summary }}</td>
-        <td><a href="/suggestor/diff?uid={{ $v.Uid }}">View Diff</a></td>
     </tr>
     {{ end }}
 </table>

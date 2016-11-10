@@ -29,6 +29,7 @@ type Config struct {
 	ConsumerKey    string `toml:"consumer_key"`
 	ConsumerSecret string `toml:"consumer_secret"`
 	RedisAddress   string `toml:"redis_address"`
+	RedisPrefix    string `toml:"redis_prefix"`
 }
 
 type Context struct {
@@ -132,10 +133,12 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 }
 
 type Post struct {
-	Wikitext string `json:"wikitext" redis:"wikitext"`
-	Summary  string `json:"summary" redis:"summary"`
-	Revid    int    `json:"revid" redis:"revid"`
-	Pageid   int    `json:"pageid" redis:"pageid"`
+	Api      string `redis:"api"`
+	Wikitext string `redis:"wikitext"`
+	Summary  string `redis:"summary"`
+	Revid    int    `redis:"revid"`
+	Pageid   int    `redis:"pageid"`
+	Pagename string `redis:"pagename"`
 	Approved bool   `redis:"approved"`
 }
 
@@ -154,23 +157,26 @@ func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	conn := c.pool.Get()
 	defer conn.Close()
-	uid, err := redis.Int(conn.Do("INCR", "uids"))
+	prefix := c.conf.RedisPrefix
+	uid, err := redis.Int(conn.Do("INCR", prefix+"uids"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	strUid := strconv.Itoa(uid)
-	key := "edit:" + strUid
+	key := prefix + "edit:" + strUid
 	conn.Send("MULTI")
 	conn.Send(
 		"HMSET", key,
+		"api", p.Api,
 		"wikitext", p.Wikitext,
 		"summary", p.Summary,
 		"revid", p.Revid,
 		"pageid", p.Pageid,
+		"pagename", p.Pagename,
 		"approved", "0",
 	)
-	conn.Send("LPUSH", "edits", strUid)
+	conn.Send("LPUSH", prefix+"edits", strUid)
 	_, err = conn.Do("EXEC")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -210,27 +216,36 @@ func (c *Context) Pending(w http.ResponseWriter, r *http.Request) {
 
 type Pending struct {
 	Uid      int
-	Pageid   int
-	Approved bool
+	Host     string
 	Summary  string
+	Pagename string
+	Approved bool
 }
 
 func (c *Context) ListPendingEdits() ([]Pending, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
+	prefix := c.conf.RedisPrefix
 	values, err := redis.Values(conn.Do(
-		"SORT", "edits",
+		"SORT", prefix+"edits",
 		"DESC",
 		"GET", "#",
-		"GET", "edit:*->pageid",
-		"GET", "edit:*->approved",
-		"GET", "edit:*->summary",
+		"GET", prefix+"edit:*->api",
+		"GET", prefix+"edit:*->summary",
+		"GET", prefix+"edit:*->pagename",
+		"GET", prefix+"edit:*->approved",
 	))
 	if err != nil {
 		return nil, err
 	}
 	var pendings []Pending
 	err = redis.ScanSlice(values, &pendings)
+	for i, t := range pendings {
+		// TODO: Ignore error? Should we validate when adding.
+		if u, err := url.Parse(t.Host); err == nil {
+			pendings[i].Host = u.Host
+		}
+	}
 	return pendings, err
 }
 
@@ -262,7 +277,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	conn := c.pool.Get()
 	defer conn.Close()
 	query := r.URL.Query()
-	key := "edit:" + query.Get("uid")
+	key := c.conf.RedisPrefix + "edit:" + query.Get("uid")
 	values, err := redis.Values(conn.Do("HGETALL", key))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -370,7 +385,7 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 	conn := c.pool.Get()
 	defer conn.Close()
 	query := r.URL.Query()
-	key := "edit:" + query.Get("uid")
+	key := c.conf.RedisPrefix + "edit:" + query.Get("uid")
 	values, err := redis.Values(conn.Do("HGETALL", key))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

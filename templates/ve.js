@@ -7,17 +7,23 @@
         torget.prototype.save = function(doc, options) {
             var target = ve.init.target;
             target.serialize(doc, function(wikitext) {
+                // FIXME: There's gotta be some canonical way of doing this.
+                var api = $("link[rel=EditURI]").attr("href");
+                api = api.replace(/\?.*$/, "");
+                if (/^\/\//.test(api)) {
+                    api = location.protocol + api;
+                }
                 $.ajax({
                     type: "post",
                     url: "{{ .Url }}",
                     dataType: "json",
                     data: JSON.stringify({
-                        host: mw.config.get("wgServerName"),
-                        page: mw.config.get("wgPageName"),
-                        revid: mw.config.get("wgRevisionId"),
-                        pageid: mw.config.get("wgArticleId"),
+                        api: api,
                         wikitext: wikitext,
                         summary: options.summary,
+                        revid: mw.config.get("wgRevisionId"),
+                        pageid: mw.config.get("wgArticleId"),
+                        pagename: mw.config.get("wgPageName"),
                     }),
                     success: function() {
                         target.saveDialog.reset();
