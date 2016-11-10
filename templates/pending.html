@@ -15,10 +15,12 @@
         <td>{{ $v.Summary }}</td>
         <td><a href="/suggestor/diff?uid={{ $v.Uid }}">View Diff</a></td>
         <td>
-            {{ if $v.Approved }}
-            Approved
+            {{ if equal $v.Approved 0 }}
+            <a href="/suggestor/approve?uid={{ $v.Uid }}&approve=1">Approve</a>
+            /
+            <a href="/suggestor/approve?uid={{ $v.Uid }}&approve=2">Decline</a>
             {{ else }}
-            <a href="/suggestor/approve?uid={{ $v.Uid }}">Approve?</a>
+                {{ if equal $v.Approved 1 }}Approved{{ else }}Declined{{ end }}
             {{ end }}
         </td>
     </tr>

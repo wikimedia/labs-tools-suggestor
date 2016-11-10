@@ -144,7 +144,7 @@ type Post struct {
 	Revid    int    `redis:"revid"`
 	Pageid   int    `redis:"pageid"`
 	Pagename string `redis:"pagename"`
-	Approved bool   `redis:"approved"`
+	Approved int    `redis:"approved"`
 }
 
 func (c *Context) Post(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +224,7 @@ type Pending struct {
 	Host     string
 	Summary  string
 	Pagename string
-	Approved bool
+	Approved int
 }
 
 func (c *Context) ListPendingEdits() ([]Pending, error) {
@@ -267,6 +267,14 @@ type Resp struct {
 }
 
 func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	uid := query.Get("uid")
+	approve, err := strconv.Atoi(query.Get("approve"))
+	if err != nil || approve < 1 || approve > 2 {
+		http.Error(w, "Approve?", http.StatusBadRequest)
+		return
+	}
+
 	token, secret, err := getToken(r, "oauthtoken")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -281,8 +289,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 
 	conn := c.pool.Get()
 	defer conn.Close()
-	query := r.URL.Query()
-	key := c.conf.RedisPrefix + "edit:" + query.Get("uid")
+	key := c.conf.RedisPrefix + "edit:" + uid
 	values, err := redis.Values(conn.Do("HGETALL", key))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -299,67 +306,72 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if post.Approved {
+	if post.Approved > 0 {
 		http.Error(w, "Edit already approved.", http.StatusBadRequest)
 		return
 	}
 
-	req, err := http.NewRequest("GET", post.Api, nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// FIXME: Should just setting an "oauthtoken" cookie be enough to
+	// decline edits?
+
+	if approve == 1 {
+		req, err := http.NewRequest("GET", post.Api, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		q := url.Values{}
+		q.Add("action", "query")
+		q.Add("meta", "tokens")
+		q.Add("type", "csrf")
+		q.Add("format", "json")
+		req.URL.RawQuery = q.Encode()
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if resp.Body == nil {
+			http.Error(w, "No body got.", http.StatusBadRequest)
+			return
+		}
+		var p Resp
+		if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+			str := fmt.Sprintf("Cannot decode got json: %s", err.Error())
+			http.Error(w, str, http.StatusBadRequest)
+			return
+		}
+		defer resp.Body.Close()
+
+		csrf := p.Query.Tokens.CSRFToken
+
+		f := url.Values{}
+		f.Add("action", "edit")
+		f.Add("pageid", strconv.Itoa(post.Pageid))
+		f.Add("summary", post.Summary)
+		f.Add("text", post.Wikitext)
+		f.Add("token", csrf)
+		f.Add("format", "json")
+
+		req, err = http.NewRequest("POST", post.Api, strings.NewReader(f.Encode()))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err = client.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// FIXME: Parse response for better assurance edit was accepted.
 	}
 
-	q := url.Values{}
-	q.Add("action", "query")
-	q.Add("meta", "tokens")
-	q.Add("type", "csrf")
-	q.Add("format", "json")
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if resp.Body == nil {
-		http.Error(w, "No body got.", http.StatusBadRequest)
-		return
-	}
-	var p Resp
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		str := fmt.Sprintf("Cannot decode got json: %s", err.Error())
-		http.Error(w, str, http.StatusBadRequest)
-		return
-	}
-	defer resp.Body.Close()
-
-	csrf := p.Query.Tokens.CSRFToken
-
-	f := url.Values{}
-	f.Add("action", "edit")
-	f.Add("pageid", strconv.Itoa(post.Pageid))
-	f.Add("summary", post.Summary)
-	f.Add("text", post.Wikitext)
-	f.Add("token", csrf)
-	f.Add("format", "json")
-
-	req, err = http.NewRequest("POST", post.Api, strings.NewReader(f.Encode()))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err = client.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// FIXME: Parse response for better assurance edit was accepted.
-
-	_, err = conn.Do("HSET", key, "approved", "1")
+	_, err = conn.Do("HSET", key, "approved", strconv.Itoa(approve))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -458,6 +470,11 @@ func (c *Context) Vejs(w http.ResponseWriter, r *http.Request) {
 
 func (c *Context) CompileTemplates(base string) {
 	layout := template.Must(template.ParseFiles(path.Join(base, "layout.html")))
+	layout = layout.Funcs(template.FuncMap{
+		"equal": func(n int, m int) bool {
+			return n == m
+		},
+	})
 	for _, t := range []string{"root", "pending", "diff"} {
 		clone, err := layout.Clone()
 		if err != nil {

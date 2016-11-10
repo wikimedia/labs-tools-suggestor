@@ -38,4 +38,5 @@
         };
         ve.init.mw.targetFactory.register(torget);
     });
+    mw.hook("postEdit").fire({ message: "Suggestor loaded." });
 }());
