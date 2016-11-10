@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,11 +23,12 @@ import (
 
 type Config struct {
 	Debug          bool
-	Address        string
-	Redis          string
+	ServerUrl      string `toml:"server_url"`
+	ServerAddress  string `toml:"server_address"`
+	ConsumerUrl    string `toml:"consumer_url"`
 	ConsumerKey    string `toml:"consumer_key"`
 	ConsumerSecret string `toml:"consumer_secret"`
-	WikiUrl        string `toml:"wiki_url"`
+	RedisAddress   string `toml:"redis_address"`
 }
 
 type Context struct {
@@ -51,12 +53,26 @@ func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		loggedIn = true
 	}
+
+	var bmjs bytes.Buffer
+	err = c.templates["bookmarklet"].Execute(&bmjs, struct {
+		Url string
+	}{
+		c.conf.ServerUrl + "/suggestor/ve.js",
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	err = c.templates["root"].ExecuteTemplate(w, "root.html", struct {
-		Title    string
-		LoggedIn bool
+		Title       string
+		LoggedIn    bool
+		Bookmarklet template.URL
 	}{
 		"Suggestor",
 		loggedIn,
+		template.URL(bmjs.String()),
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -268,7 +284,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", c.conf.WikiUrl+"/api.php", nil)
+	req, err := http.NewRequest("GET", c.conf.ConsumerUrl+"/api.php", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -308,7 +324,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 	f.Add("token", csrf)
 	f.Add("format", "json")
 
-	req, err = http.NewRequest("POST", c.conf.WikiUrl+"/api.php", strings.NewReader(f.Encode()))
+	req, err = http.NewRequest("POST", c.conf.ConsumerUrl+"/api.php", strings.NewReader(f.Encode()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -377,7 +393,7 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 	f.Add("revids", strconv.Itoa(post.Revid))
 	f.Add("rvdifftotext", post.Wikitext)
 	f.Add("format", "json")
-	resp, err := http.PostForm(c.conf.WikiUrl+"/api.php", f)
+	resp, err := http.PostForm(c.conf.ConsumerUrl+"/api.php", f)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -408,14 +424,30 @@ func (c *Context) Diff(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *Context) CompileTemplates(base string, templates []string) {
+func (c *Context) Vejs(w http.ResponseWriter, r *http.Request) {
+	err := c.templates["ve"].Execute(w, struct {
+		Url string
+	}{
+		c.conf.ServerUrl + "/suggestor/post",
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *Context) CompileTemplates(base string) {
 	layout := template.Must(template.ParseFiles(path.Join(base, "layout.html")))
-	for _, t := range templates {
+	for _, t := range []string{"root", "pending", "diff"} {
 		clone, err := layout.Clone()
 		if err != nil {
 			log.Fatal(err)
 		}
 		c.templates[t] = template.Must(clone.ParseFiles(path.Join(base, fmt.Sprintf("%s.html", t))))
+	}
+	// TODO: Maybe these should be using "text/template"?
+	for _, t := range []string{"ve", "bookmarklet"} {
+		c.templates[t] = template.Must(template.ParseFiles(path.Join(base, t+".js")))
 	}
 }
 
@@ -429,9 +461,9 @@ func main() {
 	}
 
 	consumer := oauth.NewConsumer(conf.ConsumerKey, conf.ConsumerSecret, oauth.ServiceProvider{
-		RequestTokenUrl:   conf.WikiUrl + "/index.php/Special:OAuth/initiate",
-		AuthorizeTokenUrl: conf.WikiUrl + "/index.php/Special:OAuth/authorize",
-		AccessTokenUrl:    conf.WikiUrl + "/index.php/Special:OAuth/token",
+		RequestTokenUrl:   conf.ConsumerUrl + "/index.php/Special:OAuth/initiate",
+		AuthorizeTokenUrl: conf.ConsumerUrl + "/index.php/Special:OAuth/authorize",
+		AccessTokenUrl:    conf.ConsumerUrl + "/index.php/Special:OAuth/token",
 	})
 	consumer.Debug(conf.Debug)
 
@@ -439,7 +471,7 @@ func main() {
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", conf.Redis)
+			c, err := redis.Dial("tcp", conf.RedisAddress)
 			if err != nil {
 				return nil, err
 			}
@@ -462,7 +494,7 @@ func main() {
 	base := filepath.Dir(*configPath)
 
 	templates := filepath.Join(base, "templates")
-	context.CompileTemplates(templates, []string{"root", "pending", "diff"})
+	context.CompileTemplates(templates)
 
 	public := http.Dir(filepath.Join(base, "public"))
 	http.Handle("/suggestor/public/", http.StripPrefix("/suggestor/public/", http.FileServer(public)))
@@ -474,13 +506,14 @@ func main() {
 	http.HandleFunc("/suggestor/pending", context.Pending)
 	http.HandleFunc("/suggestor/approve", context.Approve)
 	http.HandleFunc("/suggestor/diff", context.Diff)
+	http.HandleFunc("/suggestor/ve.js", context.Vejs)
 
-	address := conf.Address
+	serverAddress := conf.ServerAddress
 	// Prefer, for tools labs
 	if port := os.Getenv("PORT"); len(port) > 0 {
-		address = fmt.Sprintf(":%s", port)
+		serverAddress = fmt.Sprintf(":%s", port)
 	}
 
-	log.Println("Listening on", address)
-	log.Fatal(http.ListenAndServe(address, nil))
+	log.Println("Listening on", serverAddress)
+	log.Fatal(http.ListenAndServe(serverAddress, nil))
 }

@@ -1,4 +1,4 @@
-javascript:(function() {
+(function() {
     mw.libs.ve.targetLoader.addPlugin(function() {
         var torget = function(config) {
             torget.super.call(this, config);
@@ -9,7 +9,7 @@ javascript:(function() {
             target.serialize(doc, function(wikitext) {
                 $.ajax({
                     type: "post",
-                    url: "http://localhost:4000/post",
+                    url: "{{ .Url }}",
                     dataType: "json",
                     data: JSON.stringify({
                         host: mw.config.get("wgServerName"),

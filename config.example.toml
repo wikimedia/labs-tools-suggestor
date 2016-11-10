@@ -1,5 +1,7 @@
-address = ":4000"
-redis = ":6379"
+debug = false
+server_url = "http://localhost:4000"
+server_address = ":4000"
+consumer_url = ""
 consumer_key = ""
 consumer_secret = ""
-wiki_url = ""
+redis_address = ":6379"
