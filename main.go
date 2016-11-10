@@ -84,7 +84,12 @@ func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
 func setToken(w http.ResponseWriter, name, token, secret string, duration time.Duration) {
 	exp := time.Now().Add(duration)
 	val := fmt.Sprintf("%s:%s", token, secret)
-	cookie := &http.Cookie{Name: name, Value: val, Expires: exp}
+	cookie := &http.Cookie{
+		Name:    name,
+		Value:   val,
+		Expires: exp,
+		Path:    "/suggestor/",
+	}
 	http.SetCookie(w, cookie)
 }
 
