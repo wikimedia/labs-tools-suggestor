@@ -42,7 +42,7 @@ func NewContext(conf *Config, consumer *oauth.Consumer, pool *redis.Pool) Contex
 }
 
 func (c *Context) Root(w http.ResponseWriter, r *http.Request) {
-	if len(r.URL.Path) > 1 {
+	if r.URL.Path != "/suggestor/" {
 		http.NotFound(w, r)
 		return
 	}
@@ -112,7 +112,7 @@ func (c *Context) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setToken(w, "oauthtoken", accessToken.Token, accessToken.Secret, 30*24*time.Hour)
-	http.Redirect(w, r, "/", 303)
+	http.Redirect(w, r, "/suggestor/", 303)
 }
 
 type Post struct {
@@ -329,7 +329,7 @@ func (c *Context) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/pending", 303)
+	http.Redirect(w, r, "/suggestor/pending", 303)
 }
 
 type Resp2Revision struct {
@@ -465,15 +465,15 @@ func main() {
 	context.CompileTemplates(templates, []string{"root", "pending", "diff"})
 
 	public := http.Dir(filepath.Join(base, "public"))
-	http.Handle("/public/", http.StripPrefix("/public/", http.FileServer(public)))
+	http.Handle("/suggestor/public/", http.StripPrefix("/suggestor/public/", http.FileServer(public)))
 
-	http.HandleFunc("/", context.Root)
-	http.HandleFunc("/initiate", context.Initiate)
-	http.HandleFunc("/callback", context.Callback)
-	http.HandleFunc("/post", context.Post)
-	http.HandleFunc("/pending", context.Pending)
-	http.HandleFunc("/approve", context.Approve)
-	http.HandleFunc("/diff", context.Diff)
+	http.HandleFunc("/suggestor/", context.Root)
+	http.HandleFunc("/suggestor/initiate", context.Initiate)
+	http.HandleFunc("/suggestor/callback", context.Callback)
+	http.HandleFunc("/suggestor/post", context.Post)
+	http.HandleFunc("/suggestor/pending", context.Pending)
+	http.HandleFunc("/suggestor/approve", context.Approve)
+	http.HandleFunc("/suggestor/diff", context.Diff)
 
 	address := conf.Address
 	// Prefer, for tools labs

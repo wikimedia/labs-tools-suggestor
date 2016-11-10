@@ -14,11 +14,11 @@
             {{ if $v.Approved }}
             Approved
             {{ else }}
-            <a href="./approve?uid={{ $v.Uid }}">Approve?</a>
+            <a href="/suggestor/approve?uid={{ $v.Uid }}">Approve?</a>
             {{ end }}
         </td>
         <td>{{ $v.Summary }}</td>
-        <td><a href="./diff?uid={{ $v.Uid }}">View Diff</a></td>
+        <td><a href="/suggestor/diff?uid={{ $v.Uid }}">View Diff</a></td>
     </tr>
     {{ end }}
 </table>
