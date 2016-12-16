@@ -1,2 +1,5 @@
 suggestor
 config.toml
+
+webext/node_modules
+webext/web-ext-artifacts

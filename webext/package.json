@@ -1,0 +1,19 @@
+{
+  "name": "suggestor",
+  "version": "0.0.0",
+  "description": "Suggest edits.",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^3.12.2",
+    "jshint": "^2.9.4",
+    "web-ext": "^1.6.0"
+  },
+  "scripts": {
+    "build": "web-ext build",
+    "eslint": "eslint --ext .js .",
+    "jshint": "jshint *.js",
+    "lint": "npm run wlint && npm run jshint && npm run eslint",
+    "wlint": "web-ext lint"
+  }
+}
