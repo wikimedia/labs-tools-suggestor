@@ -1,0 +1,16 @@
+{% include "layout" %}
+{% block body %}
+&lt; <a href="/pending">Back to pending edits</a>
+
+<p>Status: {{edit.state}}</p>
+<table class="table">
+{{ diff | safe }}
+</table>
+
+{% if edit.state == "pending" %}
+<form class="form-inline" method="post" action="/status/{{edit.id}}">
+    <input class="btn btn-primary" type="submit" name="new_state" value="Approve">
+    <input class="btn btn-danger" type="submit" name="new_state" value="Reject">
+</form>
+{% endif %}
+{% endblock %}

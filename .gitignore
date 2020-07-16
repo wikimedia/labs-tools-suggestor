@@ -1,5 +1,8 @@
-suggestor
-config.toml
+# diesel_cli
+.env
+# OAuth secrets
+Rocket.toml
+target/
 
 webext/node_modules
 webext/web-ext-artifacts

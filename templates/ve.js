@@ -15,7 +15,7 @@
                 }
                 $.ajax({
                     type: "post",
-                    url: "{{ .Url }}",
+                    url: "{{ url }}",
                     dataType: "json",
                     data: JSON.stringify({
                         api: api,

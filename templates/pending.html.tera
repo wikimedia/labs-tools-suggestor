@@ -1,0 +1,31 @@
+{% include "layout" %}
+{% block body %}
+<table class="table">
+    <tr>
+        <th>Host</th>
+        <th>Page Name</th>
+        <th>Summary</th>
+        <th>View Diff</th>
+        <th>Approve?</th>
+    </tr>
+    {% for v in pendings %}
+    <tr>
+        <td>{{ v.wiki }}</td>
+        <td>{{ v.pagename }}</td>
+        <td>{{ v.summary }}</td>
+        <td><a href="/diff/{{ v.id }}">View Diff</a></td>
+        <td>
+            {% if v.state == "pending" %}
+            <a href="/approve?uid={{ v.id }}&approve=1">Approve</a>
+            /
+            <a href="/approve?uid={{ v.id }}&approve=2">Decline</a>
+            {% elif v.state == "approved" %}
+            Approved
+            {% else %}
+            Declined
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

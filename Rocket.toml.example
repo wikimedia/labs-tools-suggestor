@@ -1,0 +1,14 @@
+[global]
+secret_key = "..."
+
+[global.oauth.wikimedia]
+provider = "Wikimedia"
+client_id = "..."
+client_secret = "..."
+redirect_uri = "https://suggestor.toolforge.org/auth"
+
+[development.databases]
+toolsdb = {url = "mysql://user:password@127.0.0.1:3306/data"}
+
+[production.databases]
+toolsdb = {url = "mysql://user:password@tools-db:3306/tools-db"}

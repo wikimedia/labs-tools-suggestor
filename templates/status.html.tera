@@ -1,0 +1,9 @@
+{% include "layout" %}
+{% block body %}
+&lt; <a href="/pending">Back to pending edits</a>
+{% if error %}
+<div class="error">Error: {{error}}</div>
+{% else %}
+<p>The edit has been accepted. Thanks for helping Tor users contribute!</p>
+{% endif %}
+{% endblock %}

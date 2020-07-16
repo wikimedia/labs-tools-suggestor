@@ -1,0 +1,14 @@
+{% include "layout" %}
+{% block body %}
+<ul>
+    <li>
+        {% if username %}
+            Hello {{username}} ...
+        {% else %}
+            <a href="/login">Login</a><br />
+        {% endif %}
+    </li>
+    <li><a href="/pending">Pending edits</a></li>
+    <li><a href="{{ bookmarklet }}">Bookmarklet</a></li>
+</ul>
+{% endblock %}

@@ -1,8 +1,0 @@
-debug = false
-server_url = "http://localhost:4000"
-server_address = ":4000"
-consumer_url = "http://localhost/wiki/"
-consumer_key = ""
-consumer_secret = ""
-redis_address = ":6379"
-redis_prefix = "suggestor::"
