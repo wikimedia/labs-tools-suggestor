@@ -2,10 +2,13 @@ use super::models;
 use anyhow::{Error, Result};
 use mediawiki::api::Api;
 
+const USER_AGENT: &str = toolforge::user_agent!("suggestor");
+
 async fn build_api(wiki: &str, token: Option<&str>) -> Api {
     let mut api = Api::new(&format!("https://{}/w/api.php", wiki))
         .await
         .unwrap();
+    api.set_user_agent(USER_AGENT);
     // This is an interactive tool, disable maxlag
     api.set_maxlag(None);
     if let Some(token) = token {

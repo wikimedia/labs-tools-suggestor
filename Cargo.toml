@@ -19,3 +19,4 @@ rocket_oauth2 = { git = "https://github.com/legoktm/rocket_oauth2", branch = "le
 mediawiki = "0.2.6"
 serde = {version = "1.0", features = ["derive"]}
 anyhow = "1.0.31"
+toolforge = "0.2"
