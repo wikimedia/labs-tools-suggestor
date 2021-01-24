@@ -1,6 +1,6 @@
 use super::{api, backend, models};
 use rocket::fairing::AdHoc;
-use rocket::http::{Cookie, Cookies, SameSite};
+use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::request::Form;
 use rocket::response::Redirect;
 use rocket_contrib::json::Json;
@@ -23,7 +23,7 @@ struct IndexTemplate {
 }
 
 /// syntactic helper to get the token out of cookies
-fn extract_token(mut cookies: Cookies) -> Option<String> {
+fn extract_token(cookies: &CookieJar) -> Option<String> {
     match cookies.get_private("token") {
         Some(token) => Some(token.value().to_string()),
         None => None,
@@ -31,7 +31,7 @@ fn extract_token(mut cookies: Cookies) -> Option<String> {
 }
 
 #[get("/")]
-async fn index(cookies: Cookies<'_>) -> Template {
+async fn index(cookies: &CookieJar<'_>) -> Template {
     let username = if let Some(token) = extract_token(cookies) {
         api::get_username(&token).await
     } else {
@@ -51,16 +51,16 @@ async fn index(cookies: Cookies<'_>) -> Template {
 #[get("/login")]
 fn oauth_login(
     oauth2: OAuth2<OAuthWikimedia>,
-    mut cookies: Cookies<'_>,
+    cookies: &CookieJar<'_>,
 ) -> Redirect {
-    oauth2.get_redirect(&mut cookies, &[]).unwrap()
+    oauth2.get_redirect(&cookies, &[]).unwrap()
 }
 
 /// Redirect target to get and save the access token
 #[get("/auth")]
 fn oauth_auth(
     token: TokenResponse<OAuthWikimedia>,
-    mut cookies: Cookies<'_>,
+    cookies: &CookieJar<'_>,
 ) -> Redirect {
     cookies.add_private(
         Cookie::build("token", token.access_token().to_string())
@@ -71,13 +71,13 @@ fn oauth_auth(
 }
 
 #[derive(FromForm)]
-struct EditForm {
-    wiki: String,
-    text: String,
-    summary: String,
-    baserevid: u32,
-    pageid: u32,
-    pagename: String,
+pub struct EditForm {
+    pub wiki: String,
+    pub text: String,
+    pub summary: String,
+    pub baserevid: u32,
+    pub pageid: u32,
+    pub pagename: String,
 }
 
 #[derive(Serialize)]
@@ -87,19 +87,13 @@ struct ApiResponse {
 }
 
 /// Primary endpoint for data submission
-#[post("/api", data = "<form>")]
-fn api_endpoint(conn: ToolsDb, form: Form<EditForm>) -> Json<ApiResponse> {
-    let new_edit = models::NewEdit {
-        wiki: &form.wiki,
-        text: form.text.as_bytes(),
-        summary: &form.summary,
-        baserevid: &form.baserevid,
-        pageid: &form.pageid,
-        pagename: &form.pagename,
-        state: "pending",
-    };
-    // FIXME: validate data input is sane
-    match backend::insert_edit(new_edit, &*conn) {
+#[post("/api", data = "<edit_form>")]
+async fn api_endpoint(
+    conn: ToolsDb,
+    edit_form: Form<EditForm>,
+) -> Json<ApiResponse> {
+    let form = edit_form.into_inner();
+    match backend::insert_edit(form, &conn).await {
         Ok(edit) => Json(ApiResponse {
             id: edit.id,
             error: None,
@@ -119,9 +113,11 @@ struct PendingTemplate {
 }
 
 #[get("/pending")]
-fn pending(conn: ToolsDb) -> Template {
+async fn pending(conn: ToolsDb) -> Template {
     // TODO: error handling
-    let pendings = backend::load_edits_with_state("pending", &*conn).unwrap();
+    let pendings = backend::load_edits_with_state("pending".to_string(), &conn)
+        .await
+        .unwrap();
     Template::render(
         "pending",
         PendingTemplate {
@@ -142,7 +138,7 @@ struct DiffTemplate {
 #[get("/diff/<edit_id>")]
 async fn diff(edit_id: u32, conn: ToolsDb) -> Template {
     // TODO: error template if doesn't exist
-    let edit = backend::load_edit(edit_id, &*conn).unwrap();
+    let edit = backend::load_edit(edit_id, &conn).await.unwrap();
     // TODO: cache in redis?
     let diff = api::get_diff(&edit).await;
     Template::render(
@@ -182,7 +178,7 @@ async fn status(
     edit_id: u32,
     conn: ToolsDb,
     form: Form<StatusForm>,
-    cookies: Cookies<'_>,
+    cookies: &CookieJar<'_>,
 ) -> Result<Template, Redirect> {
     // FIXME: csrf protection
     let token = match extract_token(cookies) {
@@ -190,7 +186,7 @@ async fn status(
         // Not logged in...send through flow again
         None => return Err(Redirect::to("/login")),
     };
-    let edit = backend::load_edit(edit_id, &*conn);
+    let edit = backend::load_edit(edit_id, &conn).await;
     if edit.is_none() {
         return Ok(build_status(Some("invalid edit id provided".to_string())));
     }
@@ -209,14 +205,17 @@ async fn status(
         }
     }
     // Update the database status
-    Ok(match backend::set_state(edit_id, new_state, &*conn) {
-        Ok(_) => build_status(None),
-        Err(e) => build_status(Some(e.to_string())),
-    })
+    Ok(
+        match backend::set_state(edit_id, new_state.to_string(), &conn).await {
+            Ok(_) => build_status(None),
+            Err(e) => build_status(Some(e.to_string())),
+        },
+    )
 }
 
 // Add `/healthz` endpoint
-rocket_healthz::healthz!();
+// Disabled because causing SIGILL on `cargo test`
+// rocket_healthz::healthz!();
 
 pub fn rocket() -> rocket::Rocket {
     rocket::ignite()
@@ -237,7 +236,7 @@ pub fn rocket() -> rocket::Rocket {
                 pending,
                 diff,
                 status,
-                rocket_healthz
+                // healthz
             ],
         )
         .mount(

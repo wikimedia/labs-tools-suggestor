@@ -7,8 +7,12 @@ client_id = "..."
 client_secret = "..."
 redirect_uri = "https://suggestor.toolforge.org/auth"
 
-[development.databases]
+[debug.databases]
 toolsdb = {url = "mysql://user:password@127.0.0.1:3306/data"}
+
+[production]
+log_level = "normal"
+address = "0.0.0.0"
 
 [production.databases]
 toolsdb = {url = "mysql://user:password@tools-db:3306/tools-db"}

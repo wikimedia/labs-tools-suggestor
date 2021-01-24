@@ -18,15 +18,18 @@ mod web;
 embed_migrations!();
 
 /// Automatically create/update our schema at launch
-async fn run_db_migrations(mut rocket: Rocket) -> Result<Rocket, Rocket> {
-    let conn = web::ToolsDb::get_one(rocket.inspect().await).unwrap();
-    match embedded_migrations::run(&*conn) {
-        Ok(()) => Ok(rocket),
-        Err(_) => {
-            println!("Failed to run migrations!");
-            Err(rocket)
-        }
-    }
+async fn run_db_migrations(rocket: Rocket) -> Result<Rocket, Rocket> {
+    web::ToolsDb::get_one(&rocket)
+        .await
+        .expect("database connection")
+        .run(|c| match embedded_migrations::run(c) {
+            Ok(()) => Ok(rocket),
+            Err(e) => {
+                error!("Failed to run database migrations: {:?}", e);
+                Err(rocket)
+            }
+        })
+        .await
 }
 
 #[launch]

@@ -8,15 +8,14 @@ edition = "2018"
 
 [dependencies]
 # Use git snapshot so we can use stable Rust
-rocket = { git = "https://github.com/SergioBenitez/Rocket", rev = "549c9241c41320fc" }
-rocket_contrib = {git = "https://github.com/SergioBenitez/Rocket", rev = "549c9241c41320fc", default-features = false, features = ["json","serve", "tera_templates", "diesel_mysql_pool"]}
+rocket = { git = "https://github.com/SergioBenitez/Rocket", rev = "c24f15c18f02319", features = ["secrets"] }
+rocket_contrib = {git = "https://github.com/SergioBenitez/Rocket", rev = "c24f15c18f02319", default-features = false, features = ["json","serve", "tera_templates", "diesel_mysql_pool"]}
 diesel = "1.4.5"
 diesel_migrations = "1.4.0"
 # Patches to support Rocket's git snapshot
-rocket_oauth2 = { git = "https://github.com/legoktm/rocket_oauth2", branch = "rocket050" }
-rocket_healthz = "0.1"
-# Fixes proposed as https://github.com/magnusmanske/mediawiki_rust/pull/34
-# and https://github.com/magnusmanske/mediawiki_rust/pull/36
-mediawiki = {git = "https://github.com/legoktm/mediawiki_rust", branch = "lego-fixes"}
+rocket_oauth2 = { git = "https://github.com/legoktm/rocket_oauth2", branch = "lego-next" }
+# Causing SIGILL on `cargo test`
+# rocket_healthz = "0.2"
+mediawiki = "0.2.6"
 serde = {version = "1.0", features = ["derive"]}
 anyhow = "1.0.31"
